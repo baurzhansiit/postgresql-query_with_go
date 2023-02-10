@@ -124,7 +124,9 @@ func runCronJob(t int) {
 
 	s.StartBlocking()
 }
-
+func init() {
+	fmt.Println("Go initialazing....\n")
+}
 func main() {
 	runCronJob(5)
 }
