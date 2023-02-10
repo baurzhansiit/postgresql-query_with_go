@@ -11,12 +11,6 @@ import (
 	_ "github.com/lib/pq"
 )
 
-func test() {
-	os.Setenv("db_user", "postgres")
-	os.Setenv("db_name", "postgres")
-	os.Setenv("db_password", "password")
-}
-
 type DataBase struct {
 	host     string
 	port     int
@@ -25,12 +19,12 @@ type DataBase struct {
 	dbname   string
 }
 
-func (db *DataBase) infoDb(host string) *DataBase {
+func (db *DataBase) infoDb(host, user, dbname, password string) *DataBase {
 	db.host = host
 	db.port = 5432
-	db.user = os.Getenv("db_user")
-	db.password = os.Getenv("db_password")
-	db.dbname = os.Getenv("db_name")
+	db.user = user
+	db.password = password
+	db.dbname = dbname
 	return db
 }
 
@@ -39,9 +33,22 @@ type Query struct {
 	Name int `json:"name"`
 }
 
+func errorHandler(err error) {
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
 func (db *DataBase) db_query(query string) *sql.Rows {
-	// db.infoDb("172.17.0.2")
-	db.infoDb("localhost")
+	user, err := os.ReadFile("./db_creds/username")
+	errorHandler(err)
+	password, err := os.ReadFile("./db_creds/password")
+	errorHandler(err)
+	dbname, err := os.ReadFile("./db_creds/database")
+	errorHandler(err)
+
+	db.infoDb("postgres-svc", string(user), string(dbname), string(password))
+	// db.infoDb("localhost")
 
 	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
 		"password=%s dbname=%s sslmode=disable",
@@ -95,13 +102,10 @@ func check_results(res int) {
 }
 
 func job() {
-	test()
 	database := new(DataBase)
 	sql_query := database.db_query("Select count(*) from clm_resln_email_send_status where email_send_stat = 'PENDING';")
 	sql_query2 := database.db_query("Select count(distinct email_send_stat_id) from clm_resln_email_send_status where email_send_stat = 'PENDING';")
 	sql_query3 := database.db_query("Select count(*) from onchain_sync where synced = 'N';")
-	// sql_query4 := database.db_query("Select  date_crtd from work_center_email_asgnmt order by date_crtd desc limit 1;")
-	// sql_query4 := database.db_query("Select extract(minute from date_crtd - date_rcvd ) from work_center_email_asgnmt order by date_rcvd desc limit 1;")
 
 	res := database.pending_batch(sql_query)
 	check_results(res)
@@ -109,16 +113,15 @@ func job() {
 	check_results(res2)
 	res3 := database.pending_batch(sql_query3)
 	check_results(res3)
-	// res4 := database.pending_batch(sql_query4)
-	// fmt.Printf("%d", res4)
-	// check_results(res4)
+
 }
 
 func runCronJob(t int) {
 	s := gocron.NewScheduler(time.UTC)
-	s.Every(t).Minute().Do(func() {
+	s.Every(t).Second().Do(func() {
 		job()
 	})
+
 	s.StartBlocking()
 }
 
